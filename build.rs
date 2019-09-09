@@ -11,9 +11,17 @@ fn main() {
     // to bindgen, and lets you build up options for
     // the resulting bindings.
     let bindings = bindgen::Builder::default()
-        // The input header we would like to generate
-        // bindings for.
+        // The input header we would like to generate bindings for.
         .header("src/objectbox.h")
+        // Some settings
+        .whitelist_function("obx_.*")
+        .whitelist_type("OBX_.*")
+        .whitelist_var("OBX_.*")
+        .prepend_enum_name(false)
+        .derive_copy(false)
+        .derive_debug(false)
+        .derive_default(false)
+        .rustfmt_bindings(true)
         // Finish the builder and generate the bindings.
         .generate()
         // Unwrap the Result and panic on failure.
