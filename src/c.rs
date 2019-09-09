@@ -17,12 +17,12 @@ mod tests {
 
         unsafe { obx_version(&mut major, &mut minor, &mut patch) }
 
-        let loadedVersion = format!("{}.{}.{}", major, minor, patch);
-        let headerVersion = format!(
+        let loaded_version = format!("{}.{}.{}", major, minor, patch);
+        let header_version = format!(
             "{}.{}.{}",
             OBX_VERSION_MAJOR, OBX_VERSION_MINOR, OBX_VERSION_PATCH
         );
 
-        assert_eq!(headerVersion, loadedVersion);
+        assert_eq!(header_version, loaded_version);
     }
 }
