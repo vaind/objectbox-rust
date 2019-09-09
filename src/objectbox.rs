@@ -17,10 +17,12 @@ mod tests {
 
         unsafe { obx_version(&mut major, &mut minor, &mut patch) }
 
-        println!("ObjectBox version {}.{}.{} loaded ", major, minor, patch);
+        let loadedVersion = format!("{}.{}.{}", major, minor, patch);
+        let headerVersion = format!(
+            "{}.{}.{}",
+            OBX_VERSION_MAJOR, OBX_VERSION_MINOR, OBX_VERSION_PATCH
+        );
 
-        assert_eq!(major, OBX_VERSION_MAJOR as i32);
-        assert_eq!(minor, OBX_VERSION_MINOR as i32);
-        assert_eq!(patch, OBX_VERSION_PATCH as i32);
+        assert_eq!(headerVersion, loadedVersion);
     }
 }
