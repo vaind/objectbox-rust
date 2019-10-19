@@ -11,5 +11,7 @@ jobs:
     - uses: actions/checkout@v1
     - name: Build
       run: cargo build --verbose
+    - name: Install ObjectBox C-API
+      run: ./install.sh
     - name: Run tests
       run: cargo test --verbose
