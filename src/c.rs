@@ -3,10 +3,101 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 include!(concat!(env!("OUT_DIR"), "/objectbox-c-bindings.rs"));
+/**
+ * Implementation notes
+ * ********************
+ * - can't use str.as_ptr() for C calls without length - strings are not null terminated
+ *      => use ffi::CString & ffi:CStr
+*/
+/// Internal helper functions
+mod helpers {
+    use super::*;
+
+    pub fn last_error_message() -> Option<String> {
+        unsafe {
+            let c_char_ptr: *const ::std::os::raw::c_char = obx_last_error_message();
+
+            if c_char_ptr.is_null() {
+                None
+            } else {
+                Some(
+                    std::ffi::CStr::from_ptr(c_char_ptr)
+                        .to_string_lossy()
+                        .into_owned(),
+                )
+            }
+        }
+    }
+}
+
+use std::{error, ffi, fmt, ptr};
+
+pub enum NativeErrorKind {
+    NullPtr,
+    Other, // TODO maybe implement types based on OBX_ERROR_*
+}
+
+#[derive(Debug, Clone)]
+struct NativeError {
+    code: i32,
+    message: String,
+}
+
+impl NativeError {
+    fn _new(kind: NativeErrorKind) -> NativeError {
+        unsafe {
+            let mut c_code: i32 = 0;
+            let mut c_message: *const ::std::os::raw::c_char = ptr::null();
+
+            if !obx_last_error_pop(&mut c_code, &mut c_message) {
+                panic!("could not get native error information")
+            }
+
+            NativeError {
+                code: c_code,
+                message: std::ffi::CStr::from_ptr(c_message)
+                    .to_string_lossy()
+                    .into_owned(),
+            }
+        }
+    }
+}
+
+impl fmt::Display for NativeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.code, self.message)
+    }
+}
+
+// This is important for other errors to wrap this one.
+impl error::Error for NativeError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None // this is the deepest we can go
+    }
+}
+
+/// Validates the given native pointer is not null
+fn new<T>(ptr: *const T) -> Result<*const T, NativeError> {
+    if !ptr.is_null() {
+        Ok(ptr)
+    } else {
+        Err(NativeError::_new(NativeErrorKind::NullPtr))
+    }
+}
+
+/// Validates the obx_err returned from a native call and if it's not 0, fetches the error text
+fn call(result: obx_err) -> Result<(), NativeError> {
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(NativeError::_new(NativeErrorKind::Other))
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Borrow;
 
     /// verify the installed library version is the same as the version from objectbox.h
     #[test]
@@ -24,5 +115,55 @@ mod tests {
         );
 
         assert_eq!(header_version, loaded_version);
+    }
+
+    #[test]
+    fn test_call_positive() {
+        let c_model: *mut OBX_model = unsafe { obx_model() };
+        assert!(!c_model.is_null());
+        let result = call(unsafe { obx_model_free(c_model) });
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_call_negative() {
+        // this call will fail because of a null pointer
+        let result = call(unsafe { obx_txn_abort(ptr::null_mut()) });
+        assert!(result.is_err());
+
+        let error = result.unwrap_err();
+        assert_ne!(0, error.code);
+
+        assert!(
+            error
+                .message
+                .starts_with("Argument \"txn\" must not be null"),
+            "Unexpected error message: `{}`",
+            error.message
+        );
+    }
+
+    #[test]
+    fn test_new_positive() {
+        let result = new(unsafe { obx_model() });
+        assert!(result.is_ok());
+        assert!(!result.unwrap().is_null());
+    }
+
+    #[test]
+    fn test_new_negative() {
+        let result = new(unsafe { obx_store_open(ptr::null_mut()) });
+        assert!(result.is_err());
+
+        let error = result.unwrap_err();
+        assert_ne!(0, error.code);
+
+        assert!(
+            error
+                .message
+                .starts_with("Argument \"opt\" must not be null"),
+            "Unexpected error message: `{}`",
+            error.message
+        );
     }
 }
