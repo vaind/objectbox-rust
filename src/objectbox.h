@@ -41,7 +41,7 @@ extern "C" {
 /// When using ObjectBox as a dynamic library, you should verify that a compatible version was linked using obx_version() or obx_version_is_at_least().
 #define OBX_VERSION_MAJOR 0
 #define OBX_VERSION_MINOR 7
-#define OBX_VERSION_PATCH 0  // values >= 100 are reserved for dev releases leading to the next minor/major increase
+#define OBX_VERSION_PATCH 1  // values >= 100 are reserved for dev releases leading to the next minor/major increase
 
 /// Returns the version of the library as ints. Pointers may be null.
 void obx_version(int* major, int* minor, int* patch);
@@ -96,6 +96,8 @@ bool obx_supports_bytes_array(void);
 #define OBX_ERROR_UNIQUE_VIOLATED 10201
 #define OBX_ERROR_NON_UNIQUE_RESULT 10202
 #define OBX_ERROR_PROPERTY_TYPE_MISMATCH 10203
+#define OBX_ERROR_ID_ALREADY_EXISTS 10210
+#define OBX_ERROR_ID_NOT_FOUND 10211
 #define OBX_ERROR_CONSTRAINT_VIOLATED 10299
 
 // STD errors
@@ -173,65 +175,69 @@ void obx_last_error_clear(void);
 //----------------------------------------------
 
 typedef enum {
-    OBXPropertyType_Bool = 1,   ///< 1 byte
-    OBXPropertyType_Byte = 2,   ///< 1 byte
-    OBXPropertyType_Short = 3,  ///< 2 bytes
-    OBXPropertyType_Char = 4,   ///< 1 byte
-    OBXPropertyType_Int = 5,    ///< 4 bytes
-    OBXPropertyType_Long = 6,   ///< 8 bytes
-    OBXPropertyType_Float = 7,  ///< 4 bytes
-    OBXPropertyType_Double = 8, ///< 8 bytes
-    OBXPropertyType_String = 9,
-    OBXPropertyType_Date = 10,  ///< Unix timestamp (milliseconds since 1970) in 8 bytes
-    OBXPropertyType_Relation = 11,
-    OBXPropertyType_ByteVector = 23,
-    OBXPropertyType_StringVector = 30,
+  OBXPropertyType_Bool = 1,   ///< 1 byte
+  OBXPropertyType_Byte = 2,   ///< 1 byte
+  OBXPropertyType_Short = 3,  ///< 2 bytes
+  OBXPropertyType_Char = 4,   ///< 1 byte
+  OBXPropertyType_Int = 5,    ///< 4 bytes
+  OBXPropertyType_Long = 6,   ///< 8 bytes
+  OBXPropertyType_Float = 7,  ///< 4 bytes
+  OBXPropertyType_Double = 8, ///< 8 bytes
+  OBXPropertyType_String = 9,
+  OBXPropertyType_Date = 10,  ///< Unix timestamp (milliseconds since 1970) in 8 bytes
+  OBXPropertyType_Relation = 11,
+  OBXPropertyType_ByteVector = 23,
+  OBXPropertyType_StringVector = 30,
 } OBXPropertyType;
 
-/// Not really an enum, but binary flags to use across languages
+/// Bit-flags defining the behavior of properties.
+/// Note: Numbers indicate the bit position
 typedef enum {
-    /// One long property on an entity must be the ID
-    OBXPropertyFlags_ID = 1,
+  /// 64 bit long property (internally unsigned) representing the ID of the entity.
+  /// May be combined with: NON_PRIMITIVE_TYPE, ID_MONOTONIC_SEQUENCE, ID_SELF_ASSIGNABLE.
+      OBXPropertyFlags_ID = 1,
 
-    /// On languages like Java, a non-primitive type is used (aka wrapper types, allowing null)
-    OBXPropertyFlags_NON_PRIMITIVE_TYPE = 2,
+  /// On languages like Java, a non-primitive type is used (aka wrapper types, allowing null)
+      OBXPropertyFlags_NON_PRIMITIVE_TYPE = 2,
 
-    /// Unused yet
-    OBXPropertyFlags_NOT_NULL = 4,
+  /// Unused yet
+      OBXPropertyFlags_NOT_NULL = 4,
 
-    OBXPropertyFlags_INDEXED = 8,
+  OBXPropertyFlags_INDEXED = 8,
 
-    /// Unused yet
-    OBXPropertyFlags_RESERVED = 16,
+  /// Unused yet
+      OBXPropertyFlags_RESERVED = 16,
 
-    /// Unique index
-    OBXPropertyFlags_UNIQUE = 32,
+  /// Unique index
+      OBXPropertyFlags_UNIQUE = 32,
 
-    /// Unused yet: Use a persisted sequence to enforce ID to rise monotonic (no ID reuse)
-    OBXPropertyFlags_ID_MONOTONIC_SEQUENCE = 64,
+  /// Unused yet: Use a persisted sequence to enforce ID to rise monotonic (no ID reuse)
+      OBXPropertyFlags_ID_MONOTONIC_SEQUENCE = 64,
 
-    /// Allow IDs to be assigned by the developer
-    OBXPropertyFlags_ID_SELF_ASSIGNABLE = 128,
+  /// Allow IDs to be assigned by the developer
+      OBXPropertyFlags_ID_SELF_ASSIGNABLE = 128,
 
-    /// Unused yet
-    OBXPropertyFlags_INDEX_PARTIAL_SKIP_NULL = 256,
+  /// Unused yet
+      OBXPropertyFlags_INDEX_PARTIAL_SKIP_NULL = 256,
 
-    /// used by References for 1) back-references and 2) to clear references to deleted objects (required for ID reuse)
-    OBXPropertyFlags_INDEX_PARTIAL_SKIP_ZERO = 512,
+  /// used by References for 1) back-references and 2) to clear references to deleted objects (required for ID reuse)
+      OBXPropertyFlags_INDEX_PARTIAL_SKIP_ZERO = 512,
 
-    /// Virtual properties may not have a dedicated field in their entity class, e.g. target IDs of to-one relations
-    OBXPropertyFlags_VIRTUAL = 1024,
+  /// Virtual properties may not have a dedicated field in their entity class, e.g. target IDs of to-one relations
+      OBXPropertyFlags_VIRTUAL = 1024,
 
-    /// Index uses a 32 bit hash instead of the value
-    /// 32 bits is shorter on disk, runs well on 32 bit systems, and should be OK even with a few collisions
-    OBXPropertyFlags_INDEX_HASH = 2048,
+  /// Index uses a 32 bit hash instead of the value
+  /// 32 bits is shorter on disk, runs well on 32 bit systems, and should be OK even with a few collisions
+      OBXPropertyFlags_INDEX_HASH = 2048,
 
-    /// Index uses a 64 bit hash instead of the value
-    /// recommended mostly for 64 bit machines with values longer >200 bytes; small values are faster with a 32 bit hash
-    OBXPropertyFlags_INDEX_HASH64 = 4096,
+  /// Index uses a 64 bit hash instead of the value
+  /// recommended mostly for 64 bit machines with values longer >200 bytes; small values are faster with a 32 bit hash
+      OBXPropertyFlags_INDEX_HASH64 = 4096,
 
-    /// The actual type of the variable is unsigned (used in combination with numeric OBXPropertyType_*)
-    OBXPropertyFlags_UNSIGNED = 8192,
+  /// Unused yet: While our default are signed ints, queries & indexes need do know signing info.
+  /// Note: Don't combine with ID (IDs are always unsigned internally).
+  /// Used in combination with integer types defined in OBXPropertyType_*.
+      OBXPropertyFlags_UNSIGNED = 8192,
 } OBXPropertyFlags;
 
 struct OBX_model;
@@ -299,61 +305,61 @@ struct OBX_store_options;
 typedef struct OBX_store_options OBX_store_options;
 
 typedef enum {
-    OBXDebugFlags_LOG_TRANSACTIONS_READ = 1,
-    OBXDebugFlags_LOG_TRANSACTIONS_WRITE = 2,
-    OBXDebugFlags_LOG_QUERIES = 4,
-    OBXDebugFlags_LOG_QUERY_PARAMETERS = 8,
-    OBXDebugFlags_LOG_ASYNC_QUEUE = 16,
+  OBXDebugFlags_LOG_TRANSACTIONS_READ = 1,
+  OBXDebugFlags_LOG_TRANSACTIONS_WRITE = 2,
+  OBXDebugFlags_LOG_QUERIES = 4,
+  OBXDebugFlags_LOG_QUERY_PARAMETERS = 8,
+  OBXDebugFlags_LOG_ASYNC_QUEUE = 16,
 } OBXDebugFlags;
 
 typedef struct OBX_bytes {
-    const void* data;
-    size_t size;
+  const void* data;
+  size_t size;
 } OBX_bytes;
 
 typedef struct OBX_bytes_array {
-    OBX_bytes* bytes;
-    size_t count;
+  OBX_bytes* bytes;
+  size_t count;
 } OBX_bytes_array;
 
 typedef struct OBX_id_array {
-    obx_id* ids;
-    size_t count;
+  obx_id* ids;
+  size_t count;
 } OBX_id_array;
 
 typedef struct OBX_string_array {
-    const char** items;
-    size_t count;
+  const char** items;
+  size_t count;
 } OBX_string_array;
 
 typedef struct OBX_int64_array {
-    const int64_t* items;
-    size_t count;
+  const int64_t* items;
+  size_t count;
 } OBX_int64_array;
 
 typedef struct OBX_int32_array {
-    const int32_t* items;
-    size_t count;
+  const int32_t* items;
+  size_t count;
 } OBX_int32_array;
 
 typedef struct OBX_int16_array {
-    const int16_t* items;
-    size_t count;
+  const int16_t* items;
+  size_t count;
 } OBX_int16_array;
 
 typedef struct OBX_int8_array {
-    const int8_t* items;
-    size_t count;
+  const int8_t* items;
+  size_t count;
 } OBX_int8_array;
 
 typedef struct OBX_double_array {
-    const double* items;
-    size_t count;
+  const double* items;
+  size_t count;
 } OBX_double_array;
 
 typedef struct OBX_float_array {
-    const float* items;
-    size_t count;
+  const float* items;
+  size_t count;
 } OBX_float_array;
 
 /// Create a default set of store options.
@@ -468,19 +474,19 @@ struct OBX_cursor;
 typedef struct OBX_cursor OBX_cursor;
 
 typedef enum {
-    /// Standard put ("insert or update")
-    OBXPutMode_PUT = 1,
+  /// Standard put ("insert or update")
+      OBXPutMode_PUT = 1,
 
-    /// Put succeeds only if the entity does not exist yet.
-    OBXPutMode_INSERT = 2,
+  /// Put succeeds only if the entity does not exist yet.
+      OBXPutMode_INSERT = 2,
 
-    /// Put succeeds only if the entity already exist.
-    OBXPutMode_UPDATE = 3,
+  /// Put succeeds only if the entity already exist.
+      OBXPutMode_UPDATE = 3,
 
-    // Not used yet (does not make sense for asnyc puts)
-    // The given ID (non-zero) is guaranteed to be new; don't use unless you know exactly what you are doing!
-    // This is primarily used internally. Wrong usage leads to inconsistent data (e.g. index data not updated)!
-    // OBXPutMode_PUT_ID_GUARANTEED_TO_BE_NEW = 4
+  // Not used yet (does not make sense for asnyc puts)
+  // The given ID (non-zero) is guaranteed to be new; don't use unless you know exactly what you are doing!
+  // This is primarily used internally. Wrong usage leads to inconsistent data (e.g. index data not updated)!
+  // OBXPutMode_PUT_ID_GUARANTEED_TO_BE_NEW = 4
 
 } OBXPutMode;
 
@@ -556,14 +562,15 @@ OBX_id_array* obx_cursor_rel_ids(OBX_cursor* cursor, obx_schema_id relation_id, 
 struct OBX_box;
 typedef struct OBX_box OBX_box;
 
-/// Gets access to to the box for the given entity. A box may be used across threads.
-/// Boxes are managed by the store so there's no need to close/free them manually.
+/// Gets the box for the given entity type. A box may be used across threads.
+/// Boxes are shared instances and managed by the store; so there's no need to close/free boxes manually.
 OBX_box* obx_box(OBX_store* store, obx_schema_id entity_id);
 
 /// Checks whether a given object exists in the box.
 obx_err obx_box_contains(OBX_box* box, obx_id id, bool* out_contains);
 
-/// Checks whether a given object exists in the box.
+/// Checks whether this box contains objects with all of the IDs given
+/// @param out_contains is set to true if all of the IDs are present, otherwise false
 obx_err obx_box_contains_many(OBX_box* box, const OBX_id_array* ids, bool* out_contains);
 
 /// Fetch a single object from the box; must be called inside a (reentrant) transaction.
@@ -726,22 +733,22 @@ obx_err obx_async_close(OBX_async* async);
 
 /// Not really an enum, but binary flags to use across languages
 typedef enum {
-    /// Reverts the order from ascending (default) to descending.
-    OBXOrderFlags_DESCENDING = 1,
+  /// Reverts the order from ascending (default) to descending.
+      OBXOrderFlags_DESCENDING = 1,
 
-    /// Makes upper case letters (e.g. "Z") be sorted before lower case letters (e.g. "a").
-    /// If not specified, the default is case insensitive for ASCII characters.
-    OBXOrderFlags_CASE_SENSITIVE = 2,
+  /// Makes upper case letters (e.g. "Z") be sorted before lower case letters (e.g. "a").
+  /// If not specified, the default is case insensitive for ASCII characters.
+      OBXOrderFlags_CASE_SENSITIVE = 2,
 
-    /// For scalars only: changes the comparison to unsigned (default is signed).
-    OBXOrderFlags_UNSIGNED = 4,
+  /// For scalars only: changes the comparison to unsigned (default is signed).
+      OBXOrderFlags_UNSIGNED = 4,
 
-    /// null values will be put last.
-    /// If not specified, by default null values will be put first.
-    OBXOrderFlags_NULLS_LAST = 8,
+  /// null values will be put last.
+  /// If not specified, by default null values will be put first.
+      OBXOrderFlags_NULLS_LAST = 8,
 
-    /// null values should be treated equal to zero (scalars only).
-    OBXOrderFlags_NULLS_ZERO = 16,
+  /// null values should be treated equal to zero (scalars only).
+      OBXOrderFlags_NULLS_ZERO = 16,
 } OBXOrderFlags;
 
 struct OBX_query_builder;
