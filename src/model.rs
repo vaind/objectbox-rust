@@ -158,3 +158,52 @@ impl Entity {
         return self;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_builder_positive() {
+        let model = Model::new()
+            .entity("A", 1, 1)
+            .property(
+                "id",
+                c::OBXPropertyType_Long,
+                c::OBXPropertyFlags_ID,
+                1,
+                101,
+            )
+            .property("text", c::OBXPropertyType_String, 0, 2, 102)
+            .property_index(1, 1021)
+            .last_property_id(2, 102)
+            .entity("B", 2, 2)
+            .property(
+                "id",
+                c::OBXPropertyType_Long,
+                c::OBXPropertyFlags_ID,
+                1,
+                201,
+            )
+            .property("number", c::OBXPropertyType_Int, 0, 2, 202)
+            .last_property_id(2, 202)
+            .last_entity_id(2, 2)
+            .last_index_id(1, 1021);
+
+        assert!(model.error.is_none());
+    }
+
+    #[test]
+    fn model_builder_negative() {
+        let model = Model::new().entity("A", 1, 1).last_property_id(0, 0);
+
+        let expected_err = format!(
+            "{} Argument condition \"property_id\" not met",
+            c::OBX_ERROR_ILLEGAL_ARGUMENT
+        );
+        let actual_err = format!("{}", model.error.unwrap());
+        println!("expected: {}", &expected_err);
+        println!("actual: {}", &actual_err);
+        assert!(actual_err.starts_with(&expected_err));
+    }
+}
